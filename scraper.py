@@ -14,26 +14,28 @@ import random
 from progressbar import *
 pbar = ProgressBar()
 
-def get_tweets(query, since, until, num_tweets, show_pbar=False):
+def get_tweets(query, since, until, num_tweets, city=None, within=None):
     # scrape all tweets using sntwitter
     criteria = f"{query} since:{since} until:{until} exclude:retweets exclude:replies lang:en"
-    criteria += f" min_retweets:20 min_faves:20"  # this biases the search towards popular tweets
+    criteria += f" min_retweets:5 min_faves:5"  # this biases the search towards popular tweets
+    if (city is not None and within is not None): 
+        criteria += f" near:{city} within:{within}"
+    else:
+        pass #criteria += f" place:96683cc9126741d1"  # US place id
+    
     tweets = islice(sntwitter.TwitterSearchScraper(criteria).get_items(), num_tweets)
 
     # process tweets to remove reply links and return a list of tweet content
     output = []
-    if (show_pbar):
-        pbar = ProgressBar(widgets=[Percentage(), Bar(), ETA()], maxval=num_tweets)
-        pbar.start()
-    for (i,t) in enumerate(tweets):
+    for t in tweets:
         text = re.sub(r'https:\/\/t.co\/[A-Za-z0-9]{10}$', '', t.content, flags=re.MULTILINE)  # remove links to reply tweets
-        output.append([text, t.date])
-        if show_pbar: pbar.update(i+1)
-    return pd.DataFrame(output, columns=["text", "date"])
+        output.append([text, t.date, t.retweetCount, t.likeCount, t.quoteCount])
 
-query = "coronavirus"
-tweets_per_day = 50
-start_date = date(2020, 1, 1)
+    return pd.DataFrame(output, columns=["text", "date", "retweets", "likes", "quotes"])
+
+query = "coronavirus OR covid"
+tweets_per_day = 1000
+start_date = date(2020, 2, 1)
 end_date = date(2021, 5, 1)
 df = pd.DataFrame()
 
@@ -44,7 +46,9 @@ for (i,d) in enumerate(pd.date_range(start_date, end_date)):
     until = (d + timedelta(days=1)).strftime("%Y-%m-%d")
     tweets = get_tweets(query, since, until, tweets_per_day)
     df = df.append(tweets)
+    #print(i)
     pbar.update(i)
 
 df.to_csv('./output.csv')
+df.to_csv('./dataset.csv')
 print("\nDone!\n")
